@@ -1,6 +1,8 @@
 # jul11co-mangadl
 Jul11Co's Web Manga Downloader - Download manga from websites.
 
+[![NPM](https://nodei.co/npm/jul11co-mangadl.png)](https://nodei.co/npm/jul11co-mangadl/)
+
 ### Features
 
 * Works on Linux, macOS and Windows. 
@@ -23,7 +25,7 @@ List of supported manga sites:
 mangadl help --supported-sites
 ```
 
-- mangadex.com
+- mangadex.org
 - mangaeden.com
 - mangafox.me
 - mangahere.cc
