@@ -50,19 +50,19 @@ module.exports = {
         chapter_title: chapter_title,
         chapter_images: chapter_images,
         output_dir: chapter_output_dir
-      }, options, function(err) {
-        if (err) return callback(err);
-        callback();
-      });
+      }, options, callback);
 
     } else if (page.url.indexOf('psychoplay.co/series/') > 0 &&  $('.profile-cover').length) {
+      console.log('----');
+      console.log('Manga page: ' + page.url);
+
+      var manga_title = page.title.replace('Psycho Play - ','');
+      manga_title = utils.replaceAll(manga_title, ':', ' -');
+      manga_title = utils.replaceAll(manga_title, '.', '_');
+      console.log('Manga title: ' + manga_title);
       console.log('Chapter list');
 
       if (options.auto_manga_dir && page.url.indexOf('page=') == -1) {
-        var manga_title = page.title.replace('Psycho Play - ','');
-        manga_title = utils.replaceAll(manga_title, ':', ' -');
-        manga_title = utils.replaceAll(manga_title, '.', '_');
-        console.log('Manga title: ' + manga_title);
         options.output_dir = path.join(options.output_dir, manga_title);
         saver.setMangaOutputDir(options.output_dir);
       }
@@ -77,20 +77,23 @@ module.exports = {
         ]
       });
 
-      console.log('Chapters: ' + chapter_links.length);
-
-      chapter_links = chapter_links.filter(function(chapter_link) {
-        return !saver.isDone(chapter_link);
-      });
-      console.log('New Chapters:', chapter_links.length);
-
+      var chapter_list_pages = [];
       if ($('.pagination').length && $('.pagination li.next a').length) {
         var next_link = $('.pagination li.next a').attr('href');
-        if (next_link && next_link != '') chapter_links.push(next_link);
+        if (next_link && next_link != '') {
+          chapter_list_pages.push(next_link);
+        }
       }
-      if (options.debug) console.log(chapter_links);
 
-      saver.processPages(chapter_links, options, callback);
+      saver.processPages(chapter_links, options, function(err) {
+        if (err) return callback(err);
+        
+        if (chapter_list_pages.length) {
+          saver.processPages(chapter_list_pages, options, callback);
+        } else {
+          callback();
+        }
+      });
     } else {
       callback();
     }

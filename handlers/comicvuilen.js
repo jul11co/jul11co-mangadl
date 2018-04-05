@@ -54,18 +54,12 @@ module.exports = {
     // saver.saveHtmlFile($, page, options);
 
     if (page.url.indexOf('http://comic.vuilen.com/viewbook.php') == 0) {
+      var manga_title = page.title.split('-')[0].trim();
+      console.log('Manga title: ' + manga_title);
       console.log('Comic list');
-
-      // if (options.group_by_site && !options.output_dir_changed) {
-      //   options.output_dir_changed = true;
-      //   options.output_dir = path.join(options.output_dir, 'Comic.vuilen');
-      //   saver.setMangaOutputDir(options.output_dir);
-      // }
 
       if (options.auto_manga_dir && !options.manga_dir_changed) {
         options.manga_dir_changed = true;
-        var manga_title = page.title.split('-')[0].trim();
-        // console.log('Manga title: ' + manga_title);
         options.output_dir = path.join(options.output_dir, manga_title);
         saver.setMangaOutputDir(options.output_dir);
       }
@@ -120,11 +114,7 @@ module.exports = {
           chapter_images: comic.images,
           output_dir: path.join(options.output_dir, comic.bo + '-' + comic.tap),
           verbose: options.verbose
-        }, options, function(err) {
-          if (err) return cb(err);
-          cb();
-        });
-
+        }, options, cb);
       }, function(err) {
         if (err) return callback(err);
 
@@ -136,9 +126,7 @@ module.exports = {
         // console.log('Nav links:', navlinks.length);
 
         saver.processPages(navlinks, options, callback);
-
       });
-      
     } else {
       callback();
     }

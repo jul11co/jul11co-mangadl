@@ -108,8 +108,12 @@ Saver.prototype.setOutputDir = function(output_dir) {
   }
 }
 
-Saver.prototype.setMangaOutputDir = function(manga_dir) {
+Saver.prototype.setMangaOutputDir = function(manga_dir, opts) {
+  opts = opts || {};
   // console.log('Manga output dir: ' + manga_dir);
+  if (opts.save_old_state) {
+    this.saveStateSync(path.join(this._output_dir, this._state_file_name));
+  }
   this.setOutputDir(manga_dir);
 }
 
@@ -125,13 +129,15 @@ Saver.prototype.createComicFile = function(output_dir, images, callback) {
   var comic_cbz = path.join(output_dir, '..', archive_filename + '.cbz');
   var comic_files = [];
   var count = 1;
+  
   images.forEach(function(image) {
     if (typeof image == 'string') {
       var image_file = path.join(output_dir, image);
       if (utils.fileExists(image_file)) {
         comic_files.push({
           path: image_file,
-          name: archive_filename + '-' + utils.numberPad(count, 3) + path.extname(image)
+          // name: archive_filename + '-' + utils.numberPad(count, 3) + path.extname(image)
+          name: 'p' + utils.numberPad(count, 3) + path.extname(image)
         });
       }
     } else {
@@ -140,14 +146,113 @@ Saver.prototype.createComicFile = function(output_dir, images, callback) {
       if (utils.fileExists(image_file)) {
         comic_files.push({
           path: image_file,
-          name: archive_filename + '-' + utils.numberPad(count, 3) + path.extname(image.image_file || image.file)
+          // name: archive_filename + '-' + utils.numberPad(count, 3) + path.extname(image.image_file || image.file)
+          name: 'p' + utils.numberPad(count, 3) + path.extname(image.image_file || image.file)
         });
       }
     }
     count++;
   });
 
+  if (comic_files.length == 0) return callback();
+
   self.createZipArchive(comic_cbz, comic_files, callback);
+}
+
+Saver.prototype.downloadMangaList = function(manga_links, options, callback) {
+  if (typeof options == 'function') {
+    callback = options;
+    options = {};
+  }
+
+  console.log('' + manga_links.length + ' manga');
+
+  if (manga_links.length == 0) {
+    return callback();
+  }
+  if (options.debug) console.log(manga_links);
+
+  var self = this;
+
+  if (options.refresh_info) {
+    options.manga_links = options.manga_links || {};
+    manga_links = manga_links.filter(function(link) {
+      return !options.manga_links[link];
+    });
+
+    manga_links.forEach(function(link) {
+      options.manga_links[page.url] = 1;
+      self.updateStateData(link, {visited: 0});
+    });
+  } else {
+    manga_links = manga_links.filter(function(link) {
+      return !self.isVisited(link);
+    });
+    console.log('' + manga_links.length + ' new manga');
+  }
+
+  var onProcessPagesCB = function(err) {
+    if (err) {
+      if (err.httpStatusCode >= 500) {
+        console.log('Failed with HTTP Status Code:', err.httpStatusCode);
+        return setTimeout(function() {
+          var retry_links = manga_links.filter(function(link) {
+            return !self.isVisited(link);
+          });
+          self.processPages(retry_links, options, onProcessPagesCB);
+        }, 10000); // 10 seconds
+      }
+      return callback(err);
+    }
+    callback();
+  }
+
+  self.processPages(manga_links, options, onProcessPagesCB);
+}
+
+
+Saver.prototype.downloadMangaChapters = function(chapter_links, options, callback) {
+  if (typeof options == 'function') {
+    callback = options;
+    options = {};
+  }
+
+  console.log('Chapters: ' + chapter_links.length);
+
+  if (chapter_links.length == 0) {
+    return callback();
+  }
+  if (options.debug) console.log(chapter_links);
+
+  var self = this;
+
+  if (options.metadata_only) {
+    chapter_links = chapter_links.filter(function(chapter_link) {
+      return !self.isVisited(chapter_link);
+    });
+  } else {
+    chapter_links = chapter_links.filter(function(chapter_link) {
+      return !self.isDone(chapter_link);
+    });
+  }
+  console.log('New Chapters:', chapter_links.length);
+
+  var onProcessPagesCB = function(err) {
+    if (err) {
+      if (err.httpStatusCode >= 500) {
+        return setTimeout(function() {
+          var retry_links = chapter_links.filter(function(link) {
+            return !self.isDone(link);
+          });
+          self.processPages(retry_links, options, onProcessPagesCB);
+        }, 10000); // 10 seconds
+      }
+      return callback(err);
+    }
+    callback();
+  }
+
+  self.processPages(chapter_links, options, onProcessPagesCB);
 }
 
 // manga
@@ -169,6 +274,7 @@ Saver.prototype.downloadMangaChapter = function(manga, options, callback) {
   
   var self = this;
 
+  console.log('--');
   console.log('Download chapter:', manga.chapter_title, '(' + manga.chapter_images.length + ' pages)');
   console.log('Chapter directory:', manga.output_dir);
 
@@ -182,7 +288,14 @@ Saver.prototype.downloadMangaChapter = function(manga, options, callback) {
   };
   self.setStateData(manga.chapter_url, state_data);
 
-  if (options.metadata_only && !options.cbz) {
+  if (options.metadata_only/* && !options.cbz*/) {
+    return callback();
+  }
+  if (manga.chapter_images.length == 0) {
+    self.updateStateData(manga.chapter_url, {
+      done: true, 
+      last_update: new Date() 
+    }, true);
     return callback();
   }
 
@@ -214,10 +327,6 @@ Saver.prototype.downloadMangaChapter = function(manga, options, callback) {
     };
   }
 
-  // if (options.request_headers) {
-  //   console.log(options.request_headers);
-  // }
-
   // Download chapter_images here
   self.downloadImages(manga.chapter_images, {
     output_dir: manga.output_dir,
@@ -238,7 +347,7 @@ Saver.prototype.downloadMangaChapter = function(manga, options, callback) {
     }
   }, function(err, images) {
     if (err) {
-      return cb(err);
+      return callback(err);
     }
 
     self.updateStateData(manga.chapter_url, {
@@ -248,7 +357,14 @@ Saver.prototype.downloadMangaChapter = function(manga, options, callback) {
     }, true);
 
     if (options.cbz) {
-      self.createComicFile(manga.output_dir, images, callback);
+      self.createComicFile(manga.output_dir, images, function(err) {
+        if (err) return callback(err);
+        if (options.remove_dir && utils.directoryExists(manga.output_dir)) {
+          fse.removeSync(manga.output_dir);
+          console.log('Directory removed:', manga.output_dir);
+        }
+        callback();
+      });
     } else {
       callback();
     }
@@ -271,7 +387,7 @@ exports.download = function(page_url, output_dir, options, callback) {
   var current_state = saver.getStateData(page_url);
   if (!options.force && current_state != null) {
     console.log('Warning: State file exists in output directory. ' +
-      'Append --force to override/overwrite this.');
+      'Append --force to force update this.');
     return callback();
   }
 
@@ -409,7 +525,7 @@ var updateDir = function(output_dir, options, callback) {
     async.eachSeries(update_queue, function(update_item, cb) {
       current++;
       console.log('[' + current + '/' + total + ']', 'Download chapter: ' + update_item.chapter_url);
-      saver.downloadMangaChapter(update_item, function(err) {
+      saver.downloadMangaChapter(update_item, options, function(err) {
         if (err) return cb(err);
         cb();
       });
@@ -540,13 +656,13 @@ var updateDir = function(output_dir, options, callback) {
         onChildSaverEnd(err);
       });
 
-      child_saver.start({
+      var child_saver_opts = Object.assign(options, {
         page_url: update_item.page_url,
         output_dir: update_item.output_dir,
-        update: true,
-        auto_manga_dir: options.auto_manga_dir,
-        verbose: options.verbose
-      }, function(err) {
+        update: true
+      });
+
+      child_saver.start(child_saver_opts, function(err) {
         if (err) {
           onChildSaverEnd(err);
         }
@@ -802,9 +918,9 @@ var createArchive = function(output_dir, options, callback) {
             update_queue.push(page);
           } else {
             console.log('Existing:', page_archive_file);
-            if (options.cleanup) {
-              console.log('Directory removed:', page_output_dir);
+            if (options.cleanup || options.remove_dir) {
               fse.removeSync(page_output_dir);
+              console.log('Directory removed:', page_output_dir);
             }
           }
         }
@@ -826,18 +942,18 @@ var createArchive = function(output_dir, options, callback) {
     
     if (utils.fileExists(archive_file)) {
       console.log('File exists:', archive_file);
-      if (options.cleanup) {
-        console.log('Directory removed:', input_dir);
+      if (options.cleanup || options.remove_dir) {
         fse.removeSync(input_dir);
+        console.log('Directory removed:', input_dir);
       }
       return cb();
     }
 
     saver.createComicFile(input_dir, update_item.chapter_images || update_item.images, function(err) {
       if (err) return cb(err);
-      if (options.cleanup) {
-        console.log('Directory removed:', input_dir);
+      if (options.cleanup || options.remove_dir) {
         fse.removeSync(input_dir);
+        console.log('Directory removed:', input_dir);
       }
       cb();
     });
@@ -947,12 +1063,12 @@ var cleanupDir = function(output_dir, options, callback) {
     console.log('[' + current + '/' + total + ']', 'Cleanup: ' + manga_dir);
     
     if (options.remove_cbz && utils.fileExists(archive_file)) {
-      console.log('File removed:', archive_file);
       fse.removeSync(archive_file);
+      console.log('File removed:', archive_file);
     }
     if (options.remove_dir && utils.directoryExists(manga_dir)) {
-      console.log('Directory removed:', manga_dir);
       fse.removeSync(manga_dir);
+      console.log('Directory removed:', manga_dir);
     }
 
     cb();

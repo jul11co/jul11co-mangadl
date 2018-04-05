@@ -29,10 +29,8 @@ module.exports = {
         var title = $(this).text();
         page_links.push('http://www.mangaeden.com' + $(this).attr('value'));
       });
-      // console.log(page_links);
 
       if (typeof options.chapter_pages == 'undefined') {
-        // It's is a page of a manga chapter
         // Init data holder for chapter pages in options (passed through all callback)
         options.chapter_pages = {};
       }
@@ -40,10 +38,22 @@ module.exports = {
       for (var i = 0; i < page_links.length; i++) {
         var chapter_page_link = page_links[i];
         if (typeof options.chapter_pages[chapter_page_link] == 'undefined') {
-          options.chapter_pages[chapter_page_link] = {
-            visited: false,
-            images: []
-          };
+          // options.chapter_pages[chapter_page_link] = {
+          //   visited: false,
+          //   images: []
+          // };
+          var chapter_page_cache = saver.getStateData(chapter_page_link);
+          if (chapter_page_cache && chapter_page_cache.visited && chapter_page_cache.images) {
+            options.chapter_pages[chapter_page_link] = {
+              visited: true,
+              images: chapter_page_cache.images
+            };
+          } else {
+            options.chapter_pages[chapter_page_link] = {
+              visited: false,
+              images: []
+            };
+          }
         }
       }
 
@@ -56,17 +66,24 @@ module.exports = {
       }
 
       // Get images on current page
-      page.images = []; // saver.getImages($, page, '#mainImg');
+      // var images = saver.getImages($, page, '#mainImg');
+      var images = []; 
       page_image = {
         src: $('img#mainImg').attr('src'),
         alt: $('img#mainImg').attr('alt')
       };
-      if (page_image.src.indexOf('//') == 0) page_image.src = 'http:' + page_image.src;
-      page.images.push(page_image);
-      if (options.verbose) console.log(page.images);
+      if (page_image.src.indexOf('//') == 0) {
+        page_image.src = 'http:' + page_image.src;
+      }
+      images.push(page_image);
+      if (options.debug) console.log(images);
+
+      saver.updateStateData(page.url, {
+        images: images
+      });
 
       // Save to options
-      options.chapter_pages[page.url].images = options.chapter_pages[page.url].images.concat(page.images);
+      options.chapter_pages[page.url].images = options.chapter_pages[page.url].images.concat(images);
 
       // Check if all chapter pages are visited
       var all_chapter_pages_visited = true;
@@ -78,15 +95,13 @@ module.exports = {
       }
 
       if (all_chapter_pages_visited) {
-        // console.log('All chapter pages were visited. It\'s time to download');
-
-        // It's time to download images
         var chapter_images = [];
         for (var prop in options.chapter_pages) {
-          var chapter_page = options.chapter_pages[prop];
+          // var chapter_page = options.chapter_pages[prop];
+          var chapter_page = saver.getStateData(prop);
           chapter_images = chapter_images.concat(chapter_page.images);
         }
-        // if (options.verbose) console.log(chapter_images);
+        if (options.debug) console.log(chapter_images);
 
         // Reset chapter pages
         options.chapter_pages = {};
@@ -99,9 +114,9 @@ module.exports = {
         console.log('Chapter URL:', chapter_url);
 
         var output_dir_name = path.basename(path.dirname(link_obj.pathname));
-        var output_dir = path.join((options.output_dir || '.'), output_dir_name);
+        var output_dir = path.join(options.output_dir, output_dir_name);
         
-        if (options.verbose) {
+        if (options.debug) {
         console.log('Options output dir : ' + options.output_dir);
         console.log('Page output dir    : ' + page.output_dir);
         console.log('Output dir         : ' + output_dir);
@@ -115,10 +130,7 @@ module.exports = {
           chapter_title: chapter_title,
           chapter_images: chapter_images,
           output_dir: output_dir
-        }, options, function(err) {
-          if (err) return callback(err);
-          callback();
-        });
+        }, options, callback);
 
       } else {
 
@@ -141,24 +153,17 @@ module.exports = {
         console.log('Chapter page:', (visited_chapter_pages_count+1) + '/' + all_chapter_pages_count, next_page);
 
         // Process next page
-        saver.processPage(next_page, options, function(err) {
-          if (err) {
-            return callback(err);
-          }
-          callback();
-        });
+        saver.processPage(next_page, options, callback);
       }
     } else if ($('#mangaPage').length && $('.chapterLink').length) {
+      console.log('----');
+      console.log('Manga page: ' + page.url);
+
+      var manga_title = $('span.manga-title').eq(0).text().trim();
+      console.log('Manga output: ' + manga_title);
       console.log('Chapter list');
 
-      // if (options.group_by_site) {
-      //   options.output_dir = path.join(options.output_dir, 'MangaEden');
-      //   saver.setMangaOutputDir(options.output_dir);
-      // }
-
       if (options.auto_manga_dir) {
-        var manga_title = $('span.manga-title').eq(0).text().trim();
-        console.log('Manga output: ' + manga_title);
         options.output_dir = path.join(options.output_dir, manga_title);
         saver.setMangaOutputDir(options.output_dir);
       }
@@ -169,17 +174,8 @@ module.exports = {
       $('a.chapterLink').each(function() {
         chapter_links.push($(this).attr('href'));
       });
-      if (options.verbose) console.log(chapter_links);
 
-      console.log(chapter_links.length + ' chapters');
-      chapter_links = chapter_links.filter(function(chapter_link) {
-        return !saver.isDone(chapter_link);
-      });
-      console.log(chapter_links.length + ' new chapters');
-      saver.processPages(chapter_links, options, function(err) {
-        if (err) return callback(err);
-        callback();
-      });
+      saver.downloadMangaChapters(chapter_links, options, callback);
     } else {
       callback();
     }

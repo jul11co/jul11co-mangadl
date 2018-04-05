@@ -40,6 +40,7 @@ module.exports = {
         return callback();
       }
       tmp = utils.replaceAll(tmp,'\'','');
+
       var book_id_and_chapter = tmp.split(",");
       if (!book_id_and_chapter || book_id_and_chapter.length != 2) {
         console.log('Invalid book_id and chapter: ' + book_id_and_chapter);
@@ -63,12 +64,7 @@ module.exports = {
       var chapter_images_page = 'http://dammetruyen.com/truyen/gen_html_chapter/' + book_id + '/' + chapter;
 
       // Process next page
-      saver.processPage(chapter_images_page, options, function(err) {
-        if (err) {
-          return callback(err);
-        }
-        callback();
-      });
+      saver.processPage(chapter_images_page, options, callback);
     } else if (page.url.indexOf('http://dammetruyen.com/truyen/gen_html_chapter/') >= 0) {
 
       if (typeof options.current_chapter == 'undefined') {
@@ -77,7 +73,7 @@ module.exports = {
       }
 
       var chapter_images = saver.getImages($, page, '');
-      if (options.verbose) console.log(chapter_images);
+      if (options.debug) console.log(chapter_images);
 
       chapter_images.forEach(function(image) {
         if (image.file && image.file.length > 30) {
@@ -97,22 +93,17 @@ module.exports = {
         chapter_title: chapter_title,
         chapter_images: chapter_images,
         output_dir: chapter_output_dir
-      }, options, function(err) {
-        if (err) return callback(err);
-        callback();
-      });
+      }, options, callback);
 
     } else if ($('#book_chapters').length) {
-      console.log('Chapter list');
-      
-      // if (options.group_by_site) {
-      //   options.output_dir = path.join(options.output_dir, 'Dammetruyen');
-      //   saver.setMangaOutputDir(options.output_dir);
-      // }
+      console.log('----');
+      console.log('Manga page: ' + page.url);
 
+      var manga_title = $('h1.ttl').first().text().trim();
+      console.log('Manga title: ' + manga_title);
+      // console.log('Chapter list');
+      
       if (options.auto_manga_dir) {
-        var manga_title = $('h1.ttl').first().text().trim();
-        console.log('Manga title: ' + manga_title);
         options.output_dir = path.join(options.output_dir, manga_title);
         saver.setMangaOutputDir(options.output_dir);
       }
@@ -138,27 +129,18 @@ module.exports = {
         console.log('Invalid book_id (empty)');
         return callback();
       }
+      
       var book_id = tmp;
-
       var chapter_list_page = 'http://dammetruyen.com/truyen/gen_list_chapters/' + book_id;
 
       // Process next page
-      saver.processPage(chapter_list_page, options, function(err) {
-        if (err) {
-          return callback(err);
-        }
-        callback();
-      });
+      saver.processPage(chapter_list_page, options, callback);
     } else if (page.url.indexOf('http://dammetruyen.com/truyen/gen_list_chapters/') >= 0) {
 
-      page.chapter_links = saver.getLinks($, page, 'ul.lst');
-      if (options.verbose) console.log(page.chapter_links);
+      var chapter_links = saver.getLinks($, page, 'ul.lst');
+      if (options.debug) console.log(page.chapter_links);
 
-      console.log(page.chapter_links.length + ' chapters');
-      saver.processPages(page.chapter_links, options, function(err) {
-        if (err) return callback(err);
-        callback();
-      });
+      saver.downloadMangaChapters(chapter_links, options, callback);
     } else {
       callback();
     }

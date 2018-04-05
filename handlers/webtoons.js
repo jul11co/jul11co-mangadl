@@ -40,12 +40,15 @@ module.exports = {
     // saver.saveHtmlFile($, page, options);
 
     if ($('.viewer_lst').length) {
+      console.log('Chapter page: ' + page.url);
 
       var chapter_title = $('.subj_info h1.subj_episode').first().text().trim();
       chapter_title = utils.replaceAll(chapter_title, ':', ' -');
       chapter_title = utils.replaceAll(chapter_title, '/', '-');
       // chapter_title = utils.replaceAll(chapter_title, '.', '_');
       chapter_title = removeLastChars(chapter_title, '.');
+
+      console.log('Chapter title: ' + chapter_title);
 
       // Get images on current page
       var chapter_images = [];
@@ -58,17 +61,13 @@ module.exports = {
           });
         }
       });
-      if (options.verbose) console.log(chapter_images);
+      if (options.debug) console.log(chapter_images);
 
       var chapter_output_dir = '';
       // chapter_output_dir = path.join(options.output_dir, 
       //   path.basename(path.dirname(page.output_dir)) + '-' + path.basename(page.output_dir));
       chapter_output_dir = path.join(options.output_dir, chapter_title);
       
-      // console.log('Output dir: ', options.output_dir);
-      // console.log('Page output_dir:', page.output_dir);
-      // console.log('Chapter output_dir:', chapter_output_dir);
-
       var download_options = Object.assign(options, {
         request_headers: {
           "Referer": page.url      
@@ -80,20 +79,20 @@ module.exports = {
         chapter_title: chapter_title,
         chapter_images: chapter_images,
         output_dir: chapter_output_dir
-      }, download_options, function(err) {
-        if (err) return callback(err);
-        callback();
-      });
+      }, download_options, callback);
 
     } else if ($('.detail_header .info').length && $('.detail_lst'.length)) {
+      console.log('----');
+      console.log('Manga page: ' + page.url);
+
+      var manga_title = $('.detail_header .info h1.subj').first().text().trim();
+      manga_title = utils.replaceAll(manga_title, ':', ' -');
+      // manga_title = utils.replaceAll(manga_title, '.', '_');
+      manga_title = removeLastChars(manga_title, '.');
+      console.log('Manga title: ' + manga_title);
       console.log('Chapter list');
 
       if (options.auto_manga_dir && page.url.indexOf('&page=') == -1) {
-        var manga_title = $('.detail_header .info h1.subj').first().text().trim();
-        manga_title = utils.replaceAll(manga_title, ':', ' -');
-        // manga_title = utils.replaceAll(manga_title, '.', '_');
-        manga_title = removeLastChars(manga_title, '.');
-        console.log('Manga title: ' + manga_title);
         options.output_dir = path.join(options.output_dir, manga_title);
         saver.setMangaOutputDir(options.output_dir);
       }
@@ -108,30 +107,29 @@ module.exports = {
         ]
       });
 
-      console.log('Chapters:', chapter_links.length);
-      if (options.verbose) console.log(chapter_links);
-
-      chapter_links = chapter_links.filter(function(chapter_link) {
-        return !saver.isDone(chapter_link);
+      chapter_links = chapter_links.filter(function(link) {
+        return !saver.isDone(link.replace('https://', 'http://'));
       });
-      console.log('New Chapters:', chapter_links.length);
 
+      var chapter_list_pages = [];
       if ($('.paginate').length && $('.paginate a').length) {
-        var pag_links = [];
         $('.paginate a').each(function() {
           var pag_link = $(this).attr('href');
-          if (pag_link && pag_link != '#' && pag_links.indexOf(pag_link) == -1) {
-            pag_links.push(pag_link);
+          if (pag_link && pag_link != '#' && chapter_list_pages.indexOf(pag_link) == -1) {
+            chapter_list_pages.push(pag_link);
           }
         });
-        if (pag_links.length) {
-          pag_links.forEach(function(pag_link) {
-            chapter_links.push(pag_link);
-          });
-        }
       }
 
-      saver.processPages(chapter_links, options, callback);
+      saver.downloadMangaChapters(chapter_links, options, function(err) {
+        if (err) return callback(err);
+        
+        if (chapter_list_pages.length) {
+          saver.processPages(chapter_list_pages, options, callback);
+        } else {
+          callback();
+        }
+      });
     } else {
       callback();
     }
