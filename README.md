@@ -8,6 +8,7 @@ Jul11Co's Web Manga Downloader - Download manga from websites.
 * Works on Linux, macOS and Windows. 
 * Easy to extend.
 * Easy to update/resume.
+* Works with [mangabrowser](https://github.com/jul11co/jul11co-mangabrowser) for offline manga browsing.
 
 ### Installation
 
