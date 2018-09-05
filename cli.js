@@ -19,6 +19,7 @@ function printUsage() {
   console.log('           --cbz,            -C    : create manga archive (CBZ)');
   console.log('           -GPAC                   : same as -G -P -A -C');
   console.log('           -GAC                    : same as -G -A -C');
+  console.log('           --remove-dir            : remove chapter dir after download (only with --cbz)');
   console.log('');
   console.log('  Update local directory:');
   console.log('       mangadl update [output_dir] [--recursive] [--cbz] [--remove-dir]');
@@ -114,6 +115,14 @@ if (options.state_file_name && options.state_file_name != '') {
   mangadownloader.setStateFileName(options.state_file_name);
 }
 
+if (options.recursive && options.depth && typeof options.depth == 'string') {
+  options.depth = parseInt(options.depth);
+  if (isNaN(options.depth)) {
+    console.log('Invalid depth:', options.depth);
+    process.exit();
+  }
+}
+
 mangadownloader.loadDefaultHandlers();
 
 if ((command == 'help' || command == 'h')){
@@ -137,6 +146,7 @@ else if ((command == 'download' || command == 'd') && argv.length >= 1){
   options.download = true;
 
   options.cbz = true;  // default
+  if (options.no_cbz) options.cbz = false;
 
   var page_url = argv[0];
   options.page_url = page_url;
@@ -158,6 +168,9 @@ else if ((command == 'download' || command == 'd') && argv.length >= 1){
   });
 } else if (command == 'update' || command == 'u') {
   options.update = true;
+
+  options.cbz = true;  // default
+  if (options.no_cbz) options.cbz = false;
 
   var output_dir = argv[0] || '.';
   options.output_dir = output_dir;
@@ -374,6 +387,7 @@ else if ((command == 'download' || command == 'd') && argv.length >= 1){
   options.download = true;
 
   options.cbz = true; // default
+  if (options.no_cbz) options.cbz = false;
 
   var page_url = command;
   options.page_url = page_url;

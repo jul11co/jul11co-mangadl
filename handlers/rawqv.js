@@ -5,18 +5,18 @@ var utils = require('jul11co-wdt').Utils;
 
 module.exports = {
   
-  name: 'TruyenTranhLH',
-  website: 'https://truyentranhlh.com',
+  name: 'RawQV',
+  website: 'https://rawqv.com',
 
   match: function(link, options) {
-    return /truyentranhlh\.com\//g.test(link) || /truyentranhlh\.net\//g.test(link);
+    return /rawqv\.com\//g.test(link);
   },
 
   dispatch: function(saver, $, page, options, callback) {
 
     if (options.group_by_site && !options.orig_output_dir) {
       options.orig_output_dir = options.output_dir;
-      options.output_dir = path.join(options.output_dir, 'TruyenTranhLH');
+      options.output_dir = path.join(options.output_dir, 'RawQV');
       saver.setMangaOutputDir(options.output_dir);
     }
 
@@ -34,6 +34,7 @@ module.exports = {
 
       var chapter_images = [];
       $('.chapter-content .chapter-content > div').remove();
+      $('.chapter-content > a > img.chapter-img').remove();
       if ($('.chapter-content #chapter-imgs').length) {
         var image_src = $(this).attr('data-original');
         if (image_src) {
@@ -96,26 +97,6 @@ module.exports = {
         if (chapter_url) chapter_links.push(chapter_url);        
       });
 
-      chapter_links = chapter_links.filter(function(link) {
-        if (link.indexOf('https://') == 0) {
-          return !saver.isDone(link.replace('https:', 'http:'))
-            && !saver.isDone(link.replace('truyentranhlh.net', 'truyentranhlh.com'))
-            && !saver.isDone(link.replace('truyentranhlh.com', 'truyentranhlh.net'))
-            && !saver.isDone(link.replace('https://truyentranhlh.com', 'http://truyentranhlh.net'))
-            && !saver.isDone(link.replace('https://truyentranhlh.net', 'http://truyentranhlh.com'))
-          ;
-        } else if (link.indexOf('http://') == 0) {
-          return !saver.isDone(link.replace('http:', 'https:'))
-            && !saver.isDone(link.replace('truyentranhlh.net', 'truyentranhlh.com'))
-            && !saver.isDone(link.replace('truyentranhlh.com', 'truyentranhlh.net'))
-            && !saver.isDone(link.replace('http://truyentranhlh.com', 'https://truyentranhlh.net'))
-            && !saver.isDone(link.replace('http://truyentranhlh.net', 'https://truyentranhlh.com'))
-          ;
-        } else {
-          return true;
-        }
-      });
-
       saver.downloadMangaChapters(chapter_links, options, callback);
     } else {
       callback();
@@ -135,12 +116,11 @@ module.exports = {
 
       manga_info.cover_image = $('.info-cover img.thumbnail').attr('src');
       if (manga_info.cover_image && manga_info.cover_image.indexOf('http') != 0) {
-        if (page.url.indexOf('truyentranhlh.com') != -1) {
-          manga_info.cover_image = 'https://truyentranhlh.com/' + manga_info.cover_image;
-        } else {
-          manga_info.cover_image = 'https://truyentranhlh.net/' + manga_info.cover_image;
+        if (page.manga.cover_image.indexOf('/') == 0 && page.manga.cover_image.indexOf('//') != 0) {
+          page.manga.cover_image = 'https://rawqv.com/' + page.manga.cover_image;
         }
       }
+
       manga_info.description = $('.info-manga').children('div').first()
         .children('div.row').eq(1).children('p').first().text().trim();
 
@@ -148,7 +128,7 @@ module.exports = {
         if ($(this).find('b').length == 0) return;
 
         var info_key = $(this).find('b').first().text().trim();
-        if (info_key == 'Tên gọi khác') {
+        if (info_key == 'Other names') {
           $(this).find('b').remove();
           var other_names = $(this).text().replace(':','').trim().split(',');
           manga_info.alt_names = other_names.map(function(name) {
@@ -157,29 +137,23 @@ module.exports = {
           manga_info.alt_names = manga_info.alt_names.filter(function(name) {
             return name != 'Updating';
           });
-        } else if (info_key == 'Tác giả') {
+        } else if (info_key == 'Author(s)') {
           var authors = [];
           $(this).find('a').each(function() {
             authors.push($(this).text().trim());
           });
           manga_info.authors = authors;
-        } else if (info_key == 'Thể loại') {
+        } else if (info_key == 'Genre(s)') {
           var genres = [];
           $(this).find('a').each(function() {
             genres.push($(this).text().trim());
           });
           manga_info.genres = genres;
-        } else if (info_key == 'Nhóm dịch') {
-          var groups = [];
-          $(this).find('a').each(function() {
-            groups.push($(this).text().trim());
-          });
-          manga_info.groups = groups;
-        } else if (info_key == 'Tình trạng') {
+        } else if (info_key == 'Status') {
           // $(this).find('b').remove();
           var status_str = $(this).find('a').first().text().trim();
           manga_info.status = status_str;
-        } else if (info_key == 'Lượt xem') {
+        } else if (info_key == 'Views') {
           $(this).find('b').remove();
           var views_str = $(this).text().replace(':','').trim();
           manga_info.views = parseInt(views_str);

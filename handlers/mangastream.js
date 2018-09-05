@@ -164,7 +164,7 @@ module.exports = {
 
       var manga_title = $('.content h1').first().text().trim();
       console.log('Manga title: ' + manga_title);
-      console.log('Chapter list');
+      if (options.debug) console.log('Chapter list');
 
       if (options.auto_manga_dir) {
         options.output_dir = path.join(options.output_dir, manga_title);

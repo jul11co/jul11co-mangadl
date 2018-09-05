@@ -169,9 +169,13 @@ module.exports = {
       if (options.save_index_html) {
         saver.saveHtmlSync(path.join(options.output_dir, 'index.html'), $.html());
       }
-      var manga_info = getMangaInfo($, page, options);
+      var manga_info = this.getMangaInfo($, page, options);
       if (manga_info && manga_info.url) {
         saver.saveJsonSync(path.join(options.output_dir, 'manga.json'), manga_info);
+      }
+
+      if (options.update_info_only) {
+        return callback();
       }
 
       var chapter_links = saver.getLinks($, page, '#chapterlist');
@@ -192,86 +196,86 @@ module.exports = {
     } else {
       callback();
     }
-  }
-}
+  },
 
-var getMangaInfo = function($, page, options) {
-  var manga_info = {};
-  if ($('#chapterlist').length) {
-    manga_info.url = page.url;
-    manga_info.name = $('#mangaproperties h2.aname').text().trim();
-    manga_info.cover_image = $('#mangaimg img').attr('src');
-    manga_info.description = $('#readmangasum p').text();
+  getMangaInfo: function($, page, options) {
+    var manga_info = {};
+    if ($('#chapterlist').length) {
+      manga_info.url = page.url;
+      manga_info.name = $('#mangaproperties h2.aname').text().trim();
+      manga_info.cover_image = $('#mangaimg img').attr('src');
+      manga_info.description = $('#readmangasum p').text();
 
-    $('#mangaproperties table tr').each(function() {
-      var info_key = $(this).children('td.propertytitle').text().trim();
-      var info_value = [];
-      if ($(this).children('td').eq(1).children().length) {
-        $(this).children('td').eq(1).children().each(function() {
-          var value = $(this).text().trim();
-          if (value != info_key) {
-            value = utils.replaceAll(value,'\n','');
-            if (value != '') {
-              info_value.push(value);
+      $('#mangaproperties table tr').each(function() {
+        var info_key = $(this).children('td.propertytitle').text().trim();
+        var info_value = [];
+        if ($(this).children('td').eq(1).children().length) {
+          $(this).children('td').eq(1).children().each(function() {
+            var value = $(this).text().trim();
+            if (value != info_key) {
+              value = utils.replaceAll(value,'\n','');
+              if (value != '') {
+                info_value.push(value);
+              }
             }
+          });
+        } else {
+          var value = $(this).children('td').eq(1).text().trim();
+          if (value != '') {
+            info_value.push(value);
           }
-        });
-      } else {
-        var value = $(this).children('td').eq(1).text().trim();
-        if (value != '') {
-          info_value.push(value);
         }
-      }
-      info_key = info_key.replace(':','');
-      if (info_key == '' || info_key == 'Tweet it:' || info_key == 'Like it:' || info_key == 'Name' 
-        || info_value.length == 0) {
-        return;
-      }
+        info_key = info_key.replace(':','');
+        if (info_key == '' || info_key == 'Tweet it:' || info_key == 'Like it:' || info_key == 'Name' 
+          || info_value.length == 0) {
+          return;
+        }
 
-      if (info_key == 'Alternate Name') {
-        manga_info.alt_names = info_value.join(' ').split(', ');
-      } else if (info_key == 'Author') {
-        manga_info.authors = info_value.join(' ').split(', ');
-      } else if (info_key == 'Artist') {
-        manga_info.artists = info_value.join(' ').split(', ');
-      } else if (info_key == 'Genre') {
-        manga_info.genres = info_value;
-      } else if (info_key == 'Status') {
-        manga_info.status = info_value.join('');
-      } else {
-        manga_info[info_key] = info_value;
-      }
-    });
-
-    $('#chapterlist table tr.table_head').remove();
-
-    var manga_chapters = [];
-    $('#chapterlist table tr').each(function() {
-      var chapter_title = $(this).children('td').eq(0).text().trim();
-      chapter_title = utils.replaceAll(chapter_title,'\n','').trim();
-      manga_chapters.push({
-        url: $(this).children('td').eq(0).children('a').attr('href'),
-        title: chapter_title,
-        published_date_str: $(this).children('td').eq(1).text()
+        if (info_key == 'Alternate Name') {
+          manga_info.alt_names = info_value.join(' ').split(', ');
+        } else if (info_key == 'Author') {
+          manga_info.authors = info_value.join(' ').split(', ');
+        } else if (info_key == 'Artist') {
+          manga_info.artists = info_value.join(' ').split(', ');
+        } else if (info_key == 'Genre') {
+          manga_info.genres = info_value;
+        } else if (info_key == 'Status') {
+          manga_info.status = info_value.join('');
+        } else {
+          manga_info[info_key] = info_value;
+        }
       });
-    });
 
-    manga_info.chapter_count = manga_chapters.length;
-        
-    if (options.include_chapters || options.with_chapters) {
-      manga_info.chapters = manga_chapters;
+      $('#chapterlist table tr.table_head').remove();
+
+      var manga_chapters = [];
+      $('#chapterlist table tr').each(function() {
+        var chapter_title = $(this).children('td').eq(0).text().trim();
+        chapter_title = utils.replaceAll(chapter_title,'\n','').trim();
+        manga_chapters.push({
+          url: $(this).children('td').eq(0).children('a').attr('href'),
+          title: chapter_title,
+          published_date_str: $(this).children('td').eq(1).text()
+        });
+      });
+
+      manga_info.chapter_count = manga_chapters.length;
+          
+      if (options.include_chapters || options.with_chapters) {
+        manga_info.chapters = manga_chapters;
+      }
+      
+      if (options.verbose) {
+        console.log('Manga:');
+        console.log('    Name: ' + manga_info.name);
+        console.log('    Cover image: ' + manga_info.cover_image);
+        // console.log('    Description: ' + manga_info.description);
+        console.log('    Authors: ' + manga_info.authors);
+        console.log('    Genres: ' + manga_info.genres);
+        console.log('    Status: ' + manga_info.status);
+        console.log('    Chapter count: ' + manga_info.chapter_count);
+      }
     }
-    
-    if (options.verbose) {
-      console.log('Manga:');
-      console.log('    Name: ' + manga_info.name);
-      console.log('    Cover image: ' + manga_info.cover_image);
-      // console.log('    Description: ' + manga_info.description);
-      console.log('    Authors: ' + manga_info.authors);
-      console.log('    Genres: ' + manga_info.genres);
-      console.log('    Status: ' + manga_info.status);
-      console.log('    Chapter count: ' + manga_info.chapter_count);
-    }
+    return manga_info;
   }
-  return manga_info;
 }

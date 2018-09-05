@@ -50,11 +50,15 @@ module.exports = {
       if (options.save_index_html) {
         saver.saveHtmlSync(path.join(options.output_dir, 'index.html'), $.html());
       }
-      var manga_info = getMangaInfo($, page, options);
+      var manga_info = this.getMangaInfo($, page, options);
       if (manga_info && manga_info.url) {
         saver.saveJsonSync(path.join(options.output_dir, 'manga.json'), manga_info);
       }
       
+      if (options.update_info_only) {
+        return callback();
+      }
+
       var chapter_links = saver.getLinks($, page, '.chapter-list', {
         exclude_visited_links: true
       });
@@ -63,69 +67,69 @@ module.exports = {
     } else {
       callback();
     }
-  }
-}
+  },
 
-var getMangaInfo = function($, page, options) {
-  var manga_info = {};
-  if ($('.chapter-list').length) {
-    manga_info.url = page.url;
-    manga_info.name = $('.truyen_info .entry-title').text();
-    manga_info.cover_image = $('.truyen_info .info_image img').attr('src');
-    manga_info.description = $('.truyen_description .entry-content').text();
+  getMangaInfo: function($, page, options) {
+    var manga_info = {};
+    if ($('.chapter-list').length) {
+      manga_info.url = page.url;
+      manga_info.name = $('.truyen_info .entry-title').text();
+      manga_info.cover_image = $('.truyen_info .info_image img').attr('src');
+      manga_info.description = $('.truyen_description .entry-content').text();
 
-    $('ul.truyen_info_right li').each(function() {
-      if ($(this).children('span').length) {
-        var info_key = $(this).children('span').text().trim();
-        var info_value = [];
-        $(this).children().each(function() {
-          var value = $(this).text().trim();
-          if (value != info_key) {
-            value = utils.replaceAll(value,'\n','');
-            if (value != '') {
-              info_value.push(value);
+      $('ul.truyen_info_right li').each(function() {
+        if ($(this).children('span').length) {
+          var info_key = $(this).children('span').text().trim();
+          var info_value = [];
+          $(this).children().each(function() {
+            var value = $(this).text().trim();
+            if (value != info_key) {
+              value = utils.replaceAll(value,'\n','');
+              if (value != '') {
+                info_value.push(value);
+              }
             }
+          });
+          if (info_value.length == 0) return;
+          
+          info_key = info_key.replace(' :','').replace(':','');
+          
+          if (info_key == 'Tên khác') {
+            manga_info.alt_names = info_value;
+          } else if (info_key == 'Tác Giả') {
+            manga_info.authors = info_value;
+          } else if (info_key == 'Thể Loại') {
+            manga_info.genres = info_value;
+          } else if (info_key == 'Trạng Thái') {
+            manga_info.status = info_value.join('');
+          } else {
+            manga_info[info_key] = info_value;
           }
-        });
-        if (info_value.length == 0) return;
-        
-        info_key = info_key.replace(' :','').replace(':','');
-        
-        if (info_key == 'Tên khác') {
-          manga_info.alt_names = info_value;
-        } else if (info_key == 'Tác Giả') {
-          manga_info.authors = info_value;
-        } else if (info_key == 'Thể Loại') {
-          manga_info.genres = info_value;
-        } else if (info_key == 'Trạng Thái') {
-          manga_info.status = info_value.join('');
-        } else {
-          manga_info[info_key] = info_value;
         }
-      }
-    });
-
-    var manga_chapters = [];
-    $('.chapter-list .row').each(function() {
-      manga_chapters.push({
-        url: $(this).children('span').eq(0).children('a').attr('href'),
-        title: $(this).children('span').eq(0).text(),
-        published_date_str: $(this).children('span').eq(1).text()
       });
-    });
 
-    manga_info.chapter_count = manga_chapters.length;
-    
-    if (options.verbose) {
-      console.log('Manga:');
-      console.log('    Name: ' + manga_info.name);
-      console.log('    Cover image: ' + manga_info.cover_image);
-      // console.log('    Description: ' + manga_info.description);
-      console.log('    Authors: ' + manga_info.authors);
-      console.log('    Genres: ' + manga_info.genres);
-      console.log('    Status: ' + manga_info.status);
-      console.log('    Chapter count: ' + manga_info.chapter_count);
+      var manga_chapters = [];
+      $('.chapter-list .row').each(function() {
+        manga_chapters.push({
+          url: $(this).children('span').eq(0).children('a').attr('href'),
+          title: $(this).children('span').eq(0).text(),
+          published_date_str: $(this).children('span').eq(1).text()
+        });
+      });
+
+      manga_info.chapter_count = manga_chapters.length;
+      
+      if (options.verbose) {
+        console.log('Manga:');
+        console.log('    Name: ' + manga_info.name);
+        console.log('    Cover image: ' + manga_info.cover_image);
+        // console.log('    Description: ' + manga_info.description);
+        console.log('    Authors: ' + manga_info.authors);
+        console.log('    Genres: ' + manga_info.genres);
+        console.log('    Status: ' + manga_info.status);
+        console.log('    Chapter count: ' + manga_info.chapter_count);
+      }
     }
+    return manga_info;
   }
-  return manga_info;
 }

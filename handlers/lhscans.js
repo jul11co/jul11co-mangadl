@@ -6,10 +6,10 @@ var utils = require('jul11co-wdt').Utils;
 module.exports = {
   
   name: 'LHScans',
-  website: 'http://lhscans.com',
+  website: 'https://lhscan.net',
 
   match: function(link, options) {
-    return /lhscans\.com\//g.test(link);
+    return /lhscans\.com\//g.test(link) || /rawlh\.com\//g.test(link) || /lhscan\.net\//g.test(link);
   },
 
   dispatch: function(saver, $, page, options, callback) {
@@ -32,7 +32,19 @@ module.exports = {
 
       // console.log('Chapter title:', chapter_title);
 
-      var chapter_images = saver.getImages($, page, '.chapter-content');
+      var chapter_images = [];
+      $('.chapter-content .chapter-content > div').remove();
+      if ($('.chapter-content #chapter-imgs').length) {
+        var image_src = $(this).attr('data-original');
+        if (image_src) {
+          chapter_images.push({
+            src: image_src,
+            file: path.basename(image_src)
+          });
+        }
+      } else {
+        chapter_images = saver.getImages($, page, '.chapter-content');
+      }
       if (chapter_images.length == 0) return callback();
       if (options.verbose) console.log(chapter_images);
 
@@ -68,99 +80,184 @@ module.exports = {
       if (options.save_index_html) {
         saver.saveHtmlSync(path.join(options.output_dir, 'index.html'), $.html());
       }
-      var manga_info = getMangaInfo($, page, options);
+      var manga_info = this.getMangaInfo($, page, options);
       if (manga_info && manga_info.url) {
         saver.saveJsonSync(path.join(options.output_dir, 'manga.json'), manga_info);
       }
 
-      var chapter_links = saver.getLinks($, page, '#tab-chapper');
+      if (options.update_info_only) {
+        return callback();
+      }
+
+      // var chapter_links = saver.getLinks($, page, '#tab-chapper');
+      var chapter_links = [];
+      if ($('#list-chapters a.chapter').length) {
+        $('#list-chapters a.chapter').each(function() {
+          var chapter_url = $(this).attr('href');
+          if (chapter_url) {
+            chapter_links.push(chapter_url);
+          }
+        });
+      } else {
+        $('#tab-chapper table tr').each(function() {
+          var chapter_url = $(this).children('td').eq(0).children('a').attr('onclick');
+          if (chapter_url) {
+            chapter_url = utils.replaceAll(chapter_url, '\'', '');
+            chapter_url = utils.replaceAll(chapter_url, ' ', '');
+            chapter_url = utils.extractSubstring(chapter_url, '(', ');');
+            var chapter_url_parts = chapter_url.split(',');
+            chapter_url = chapter_url_parts[0] + chapter_url_parts[1].slice(1) +
+                '-chapter-' + chapter_url_parts[2] + '.html';
+            if (page.url.indexOf('lhscans.com') != -1) {
+              chapter_url = 'http://lhscans.com/' + chapter_url;
+            } else if (page.url.indexOf('rawlh.com') != -1) {
+              chapter_url = 'http://rawlh.com/' + chapter_url;
+            } else {
+              chapter_url = 'https://lhscan.net/' + chapter_url;
+            }
+          } else {
+            chapter_url = $(this).children('td').eq(0).children('a').attr('href');
+          }
+          if (chapter_url) chapter_links.push(chapter_url);        
+        });
+      }
+
+      chapter_links = chapter_links.filter(function(link) {
+        if (link.indexOf('rawlh.com') != -1) {
+          return !saver.isDone(link.replace('rawlh.com', 'lhscans.com'));
+        } else if (link.indexOf('https://lhscan.net') != -1) {
+          return !saver.isDone(link.replace('https://lhscan.net', 'http://rawlh.com'))
+            && !saver.isDone(link.replace('https://lhscan.net', 'http://lhscans.com'));
+        } else {
+          return true;
+        }
+      });
 
       saver.downloadMangaChapters(chapter_links, options, callback);
     } else {
       callback();
     }
-  }
-}
+  },
 
-var getMangaInfo = function($, page, options) {
-  var manga_info = {};
-  if ($('#tab-chapper').length) {
-    manga_info = {};
-    manga_info.url = page.url;
-    manga_info.name = $('.breadcrumb li a').last().children('span').text().trim();
-    if (!manga_info.name) {
-      manga_info.name = $('.breadcrumb li a').last().attr('title');
-    }
-    manga_info.name = utils.replaceAll(manga_info.name, '- Raw', '').trim();
-
-    manga_info.cover_image = $('.info-cover img.thumbnail').attr('src');
-    if (manga_info.cover_image && manga_info.cover_image.indexOf('http') != 0) {
-      manga_info.cover_image = 'http://lhscans.com/' + manga_info.cover_image;
-    }
-    manga_info.description = $('.info-manga').children('div').first()
-      .children('div.row').eq(1).children('p').first().text().trim();
-
-    $('ul.manga-info li').each(function() {
-      if ($(this).find('b').length == 0) return;
-
-      var info_key = $(this).find('b').first().text().trim();
-      if (info_key == 'Other names') {
-        $(this).find('b').remove();
-        var other_names = $(this).text().replace(':','').trim().split(',');
-        manga_info.alt_names = other_names.map(function(name) {
-          return name.trim();
-        });
-        manga_info.alt_names = manga_info.alt_names.filter(function(name) {
-          return name != 'Updating';
-        });
-      } else if (info_key == 'Author(s)') {
-        var authors = [];
-        $(this).find('a').each(function() {
-          authors.push($(this).text().trim());
-        });
-        manga_info.authors = authors;
-      } else if (info_key == 'Genre(s)') {
-        var genres = [];
-        $(this).find('a').each(function() {
-          genres.push($(this).text().trim());
-        });
-        manga_info.genres = genres;
-      } else if (info_key == 'Status') {
-        // $(this).find('b').remove();
-        var status_str = $(this).find('a').first().text().trim();
-        manga_info.status = status_str;
-      } else if (info_key == 'Views') {
-        $(this).find('b').remove();
-        var views_str = $(this).text().replace(':','').trim();
-        manga_info.views = parseInt(views_str);
+  getMangaInfo: function($, page, options) {
+    var manga_info = {};
+    if ($('#tab-chapper').length) {
+      manga_info = {};
+      manga_info.url = page.url;
+      manga_info.name = $('.breadcrumb li a').last().children('span').text().trim();
+      if (!manga_info.name) {
+        manga_info.name = $('.breadcrumb li a').last().attr('title');
       }
-    });
+      manga_info.name = utils.replaceAll(manga_info.name, '- Raw', '').trim();
 
-    var manga_chapters = [];
-    $('#tab-chapper table tr').each(function() {
-      manga_chapters.push({
-        url: $(this).children('td').eq(0).children('a').attr('href'),
-        title: $(this).children('td').eq(0).children('a').text().trim(),
-        published_date_str: $(this).children('td').eq(1).text()
+      manga_info.cover_image = $('.info-cover img.thumbnail').attr('src');
+      if (manga_info.cover_image && manga_info.cover_image.indexOf('http') != 0) {
+        if (page.url.indexOf('lhscans.com') != -1) {
+          manga_info.cover_image = 'http://lhscans.com/' + manga_info.cover_image;
+        } else if (page.url.indexOf('rawlh.com') != -1) {
+          manga_info.cover_image = 'http://rawlh.com/' + manga_info.cover_image;
+        } else {
+          manga_info.cover_image = 'https://lhscan.net/' + manga_info.cover_image;
+        }
+      }
+      manga_info.description = $('.info-manga').children('div').first()
+        .children('div.row').eq(1).children('p').first().text().trim();
+
+      $('ul.manga-info li').each(function() {
+        if ($(this).find('b').length == 0) return;
+
+        var info_key = $(this).find('b').first().text().trim();
+        if (info_key == 'Other names') {
+          $(this).find('b').remove();
+          var other_names = $(this).text().replace(':','').trim().split(',');
+          manga_info.alt_names = other_names.map(function(name) {
+            return name.trim();
+          });
+          manga_info.alt_names = manga_info.alt_names.filter(function(name) {
+            return name != 'Updating';
+          });
+        } else if (info_key == 'Author(s)') {
+          var authors = [];
+          $(this).find('a').each(function() {
+            authors.push($(this).text().trim());
+          });
+          manga_info.authors = authors;
+        } else if (info_key == 'Genre(s)') {
+          var genres = [];
+          $(this).find('a').each(function() {
+            genres.push($(this).text().trim());
+          });
+          manga_info.genres = genres;
+        } else if (info_key == 'Status') {
+          // $(this).find('b').remove();
+          var status_str = $(this).find('a').first().text().trim();
+          manga_info.status = status_str;
+        } else if (info_key == 'Views') {
+          $(this).find('b').remove();
+          var views_str = $(this).text().replace(':','').trim();
+          manga_info.views = parseInt(views_str);
+        }
       });
-    });
 
-    manga_info.chapter_count = manga_chapters.length;
-    
-    if (options.include_chapters || options.with_chapters) {
-      manga_info.chapters = manga_chapters;
+      var manga_chapters = [];
+      if ($('#list-chapters a.chapter').length) {
+        $('#list-chapters a.chapter').each(function() {
+          var chapter_url = $(this).attr('href');
+          if (chapter_url) {
+            manga_chapters.push({
+              url: $(this).attr('href'),
+              title: $(this).text().trim(),
+              published_date_str: $(this).parent().parent().children('span.pubDate').first().text().trim()
+            });
+          }
+        });
+      } else {
+        $('#tab-chapper table tr').each(function() {
+          var chapter_url = $(this).children('td').eq(0).children('a').attr('onclick');
+          if (chapter_url) {
+            chapter_url = utils.replaceAll(chapter_url, '\'', '');
+            chapter_url = utils.replaceAll(chapter_url, ' ', '');
+            chapter_url = utils.extractSubstring(chapter_url, '(', ');');
+            var chapter_url_parts = chapter_url.split(',');
+            chapter_url = chapter_url_parts[0] + chapter_url_parts[1].slice(1) +
+                '-chapter-' + chapter_url_parts[2] + '.html';
+            if (page.url.indexOf('lhscans.com') != -1) {
+              chapter_url = 'http://lhscans.com/' + chapter_url;
+            } else if (page.url.indexOf('rawlh.com') != -1) {
+              chapter_url = 'http://rawlh.com/' + chapter_url;
+            } else {
+              chapter_url = 'https://lhscan.net/' + chapter_url;
+            }
+          } else {
+            chapter_url = $(this).children('td').eq(0).children('a').attr('href');
+          }
+
+          manga_chapters.push({
+            // url: $(this).children('td').eq(0).children('a').attr('href'),
+            url: chapter_url,
+            title: $(this).children('td').eq(0).children('a').text().trim(),
+            published_date_str: $(this).children('td').eq(1).text()
+          });
+        });
+      }
+
+      manga_info.chapter_count = manga_chapters.length;
+      
+      if (options.include_chapters || options.with_chapters) {
+        manga_info.chapters = manga_chapters;
+      }
+          
+      if (options.verbose) {
+        console.log('Manga:');
+        console.log('    Name: ' + manga_info.name);
+        console.log('    Cover image: ' + manga_info.cover_image);
+        // console.log('    Description: ' + manga_info.description);
+        console.log('    Authors: ' + manga_info.authors);
+        console.log('    Genres: ' + manga_info.genres);
+        console.log('    Status: ' + manga_info.status);
+        console.log('    Chapter count: ' + manga_info.chapter_count);
+      }
     }
-        
-    if (options.verbose) {
-      console.log('Manga:');
-      console.log('    Name: ' + manga_info.name);
-      console.log('    Cover image: ' + manga_info.cover_image);
-      // console.log('    Description: ' + manga_info.description);
-      console.log('    Authors: ' + manga_info.authors);
-      console.log('    Genres: ' + manga_info.genres);
-      console.log('    Status: ' + manga_info.status);
-      console.log('    Chapter count: ' + manga_info.chapter_count);
-    }
+    return manga_info;
   }
-  return manga_info;
 }

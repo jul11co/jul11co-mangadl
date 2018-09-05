@@ -54,6 +54,7 @@ module.exports = {
     // saver.saveHtmlFile($, page, options);
 
     if (page.url.indexOf('http://comic.vuilen.com/viewbook.php') == 0) {
+      console.log('----');
       var manga_title = page.title.split('-')[0].trim();
       console.log('Manga title: ' + manga_title);
       console.log('Comic list');

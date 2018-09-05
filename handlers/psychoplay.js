@@ -60,7 +60,7 @@ module.exports = {
       manga_title = utils.replaceAll(manga_title, ':', ' -');
       manga_title = utils.replaceAll(manga_title, '.', '_');
       console.log('Manga title: ' + manga_title);
-      console.log('Chapter list');
+      if (options.debug) console.log('Chapter list');
 
       if (options.auto_manga_dir && page.url.indexOf('page=') == -1) {
         options.output_dir = path.join(options.output_dir, manga_title);

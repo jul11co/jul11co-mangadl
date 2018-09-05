@@ -191,16 +191,28 @@ Saver.prototype.downloadMangaList = function(manga_links, options, callback) {
     console.log('' + manga_links.length + ' new manga');
   }
 
+  var failed_count = 0;
+  var max_failed_count = 5;
+
   var onProcessPagesCB = function(err) {
     if (err) {
-      if (err.httpStatusCode >= 500) {
-        console.log('Failed with HTTP Status Code:', err.httpStatusCode);
+      if (err.httpStatusCode >= 500 || err.code == 'ECONNREFUSED') {
+        failed_count++;
+        if (failed_count > max_failed_count) {
+          return callback(err);
+        }
+
+        console.log('Failed with HTTP Status code:', err.httpStatusCode, 
+          '(try ' + failed_count+'/'+max_failed_count +')');
+
+        var backoff_timeout = failed_count*10000; // 10 seconds
+
         return setTimeout(function() {
           var retry_links = manga_links.filter(function(link) {
             return !self.isVisited(link);
           });
           self.processPages(retry_links, options, onProcessPagesCB);
-        }, 10000); // 10 seconds
+        }, backoff_timeout);
       }
       return callback(err);
     }
@@ -237,15 +249,27 @@ Saver.prototype.downloadMangaChapters = function(chapter_links, options, callbac
   }
   console.log('New Chapters:', chapter_links.length);
 
+  var failed_count = 0;
+  var max_failed_count = 5;
+
   var onProcessPagesCB = function(err) {
     if (err) {
-      if (err.httpStatusCode >= 500) {
+      if (err.httpStatusCode >= 500 || err.httpStatusCode == 404 || err.code == 'ECONNREFUSED') {
+        failed_count++;
+        if (failed_count > max_failed_count) {
+          return callback(err);
+        }
+
+        console.log('Failed with HTTP Status code:', err.httpStatusCode, 
+          '(try ' + failed_count+'/'+max_failed_count +')');
+
+        var backoff_timeout = (err.httpStatusCode == 404) ? 0 : (failed_count*10000); // 10 seconds
         return setTimeout(function() {
           var retry_links = chapter_links.filter(function(link) {
             return !self.isDone(link);
           });
           self.processPages(retry_links, options, onProcessPagesCB);
-        }, 10000); // 10 seconds
+        }, backoff_timeout);
       }
       return callback(err);
     }
@@ -344,7 +368,13 @@ Saver.prototype.downloadMangaChapter = function(manga, options, callback) {
     onDownloadFinished: function(res) {
       downloaded++;
       console.log('Downloaded:', downloaded+'/'+total, path.relative(options.output_dir, res.file));
-    }
+    },
+    onDownloadTimeout: function(err, data) {
+      if (data) {
+        console.log('Download timeout:', data.url, '('+data.attempts+'/'+data.max_attempts+')');
+      }
+      console.log(err.message);
+    },
   }, function(err, images) {
     if (err) {
       return callback(err);
@@ -422,6 +452,15 @@ var scanDirRecursive = function(abspath, options, callback) {
     options = {};
   }
 
+  options.current_depth = options.current_depth || 0;
+
+  var current_depth = options.current_depth+1;
+  if (options.depth && current_depth > options.depth) {
+    return callback(null, []);
+  }
+
+  // console.log('scanDirRecursive', options.current_depth, abspath);
+
   var statefilelist = [];
   fs.readdir(abspath, function(err, files) {
     if (err) return callback(err);
@@ -439,9 +478,14 @@ var scanDirRecursive = function(abspath, options, callback) {
           statefilelist.push(file_abs_path);
           cb();
       } else if (stats.isDirectory()) {
-        scanDirRecursive(file_abs_path, options, function(err, statefiles) {
+        var opts = Object.assign({}, options);
+        opts.current_depth = options.current_depth+1;
+
+        scanDirRecursive(file_abs_path, opts, function(err, statefiles) {
           if (err) return cb(err);
-          statefilelist = statefilelist.concat(statefiles);
+          if (statefiles && statefiles.length) {
+            statefilelist = statefilelist.concat(statefiles);
+          }
           cb();
         });
       } else {
@@ -688,12 +732,18 @@ exports.update = function(output_dir, options, callback) {
   if (!utils.fileExists(path.join(output_dir, state_file_name)) || options.recursive) {
 
     // scan for state files
-    scanDirRecursive(output_dir, function(err, statefiles) {
+    scanDirRecursive(output_dir, {depth: options.depth}, function(err, statefiles) {
       if (err) return callback(err);
 
       if (statefiles.length == 0) {
         console.log('No need to update. State files not found.');
         return callback();
+      }
+
+      if (options.exclude_dir) {
+        statefiles = statefiles.filter(function(statefile) {
+          return !(statefile.indexOf(options.exclude_dir) >= 0);
+        });
       }
 
       var total = statefiles.length;
@@ -707,7 +757,13 @@ exports.update = function(output_dir, options, callback) {
         console.log('[' + current + '/' + total + ']', 'Update: ' + output_dir);
 
         updateDir(output_dir, options, function(err) {
-          if (err) return cb(err);
+          if (err) {
+            if (err.httpStatusCode == 404) {
+              console.log('HTTP Status code:', err.httpStatusCode);
+              return cb();
+            }
+            return cb(err);
+          }
           cb();
         });
       }, function(err) {
@@ -733,9 +789,16 @@ exports.listManga = function(output_dir, options, callback) {
     return callback(new Error('Directory does not exist'));
   }
 
+  var delimiter = options.delimiter || ','; 
+  // options.delimiter can be 'COMMA', 'COLON', 'SEMICOLON' or 'PIPE'
+  if (delimiter == 'COMMA') delimiter = ',';
+  else if (delimiter == 'COLON') delimiter = ':';
+  else if (delimiter == 'SEMICOLON') delimiter = ';';
+  else if (delimiter == 'PIPE') delimiter = '|';
+
   if (!utils.fileExists(path.join(output_dir, state_file_name)) || options.recursive) {
     // scan for state files
-    scanDirRecursive(output_dir, function(err, statefiles) {
+    scanDirRecursive(output_dir, {depth: options.depth}, function(err, statefiles) {
       if (err) return callback(err);
 
       if (statefiles.length == 0) {
@@ -750,11 +813,13 @@ exports.listManga = function(output_dir, options, callback) {
         var output_dir = path.dirname(statefile);
 
         current++;
-        console.log('');
-        console.log('[' + current + '/' + total + ']', 'Manga: ' + output_dir);
+        if (!options.dsv) {
+          console.log('');
+          console.log('[' + current + '/' + total + ']', 'Manga: ' + output_dir);
+        }
 
         if (!utils.fileExists(path.join(output_dir, state_file_name))) {
-          console.log('State file not found in directory');
+          if (!options.csv) console.log('State file not found in directory');
           return cb();
         }
 
@@ -765,15 +830,17 @@ exports.listManga = function(output_dir, options, callback) {
         });
 
         var url = saver.getStateData('url');
-        if (url)
-          console.log('URL:', url);
-        else
-          console.log('URL: n/a');
+        if (!options.dsv) {
+          console.log('URL:', url || 'n/a');
+        }
         var last_update = saver.getStateData('last_update');
-        if (last_update)
+        if (last_update && !options.dsv) {
           console.log('Last update:', moment(last_update).fromNow());
-        // else
-        //   console.log('Last update: n/a');
+        }
+
+        if (options.dsv) {
+          console.log('"' + output_dir + '"' + delimiter + (url||'') + delimiter + (last_update||''));
+        }
 
         saver.exit();
 
@@ -796,9 +863,14 @@ exports.listManga = function(output_dir, options, callback) {
       save_state_on_exit: false
     });
 
-    console.log('URL:', saver.getStateData('url'));
-    console.log('Last update:', saver.getStateData('last_update'));
-    console.log('');
+    if (!options.dsv) {
+      console.log('URL:', saver.getStateData('url'));
+      console.log('Last update:', saver.getStateData('last_update'));
+      console.log('');
+    } else {
+      console.log('"' + output_dir + '"' +  delimiter + (saver.getStateData('url')||'') + delimiter 
+        + (saver.getStateData('last_update')||''));
+    }
 
     saver.exit();
 
@@ -978,7 +1050,7 @@ exports.createArchive = function(output_dir, options, callback) {
 
   if (options.recursive) {
     // scan for state files
-    scanDirRecursive(output_dir, function(err, statefiles) {
+    scanDirRecursive(output_dir, {depth: options.depth}, function(err, statefiles) {
       if (err) return callback(err);
 
       if (statefiles.length == 0) {
@@ -1092,7 +1164,7 @@ exports.cleanup = function(output_dir, options, callback) {
 
   if (options.recursive) {
     // scan for state files
-    scanDirRecursive(output_dir, function(err, statefiles) {
+    scanDirRecursive(output_dir, {depth: options.depth}, function(err, statefiles) {
       if (err) return callback(err);
 
       if (statefiles.length == 0) {
